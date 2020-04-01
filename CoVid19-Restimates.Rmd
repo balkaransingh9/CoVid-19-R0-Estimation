@@ -1,0 +1,167 @@
+---
+title: "CoVid19 Reproduction Numbers"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(R0)
+library(EpiEstim)
+library(incidence)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Attack Rate Method
+
+$R0$ by the attack rate method is given by: $$ R_{0} = -\frac{log(\frac{1-AR}{S_{0}})}{AR-(1-S_{0})} $$ here $S_{0}$ is the initial percentage of susceptible population and $AR$ is eventual percentage of the infected population. This model assumes homogeneous mixing in the population , no intervention and a closed population. 
+
+### Exponential Growth Method
+
+The exponential growth rate of an outbreak is associated with the initial reproduction ratio. The exponential growth rate is the per capita change in the number of cases per time unit. The reproduction number can be obtained by: $$ R=\frac{1}{M(-r)} $$ where M is the moment generating function of the time generation function and r is exponential growth rate. The requirement is to estimate the growth rate from the epidemic curve over the period exponential growth. 
+
+### Maximum likelihood estimation
+
+Estimation of the reproduction number by maximum liklihood estimation assumes that the number of expected secondary cases produced by a typical infected individual follows a poisson distribution (with R as the expected number). The estimate for R is obtained by maximizing the log-liklihood on a period of exponential growth: $$ l(R) = \sum^{T}_{t=1} log \left( \frac{e^{\mu_{t}}\mu_{t}^{N_{t}}}{N_{t!}} \right) $$ where N is the number of cases over consecutive time $T$. $\mu_{t}$ is defined as $\mu_{t} = R\sum_{i=1}^{t}N_{t-i}w_{i}$ $w$ is the discretised time generation distribution. 
+
+### Time dependent method
+
+The time dependant method by Wallinga & Teunis reconstructs probabilistic transmission trees and counts the number infected cases per infected individual. The reproduction number (Rt) is calculated by averaging over all cases with same date of onset. The probability that some case $i$ with onset time $ti$ was infected by case $j$ with onset time $tj$ is given by:
+
+$$ p_{ij} = \frac{N_{i}w(t_{i}-t_{j})}{\sum_{i\neq k}N_{i}w(t_{i}-t_{k})} $$ 
+Then $R_{t} = \frac{1}{N_{t}}\sum_{\{tj=t\}}$, where $R_{j} = \sum_{i}p_{ij}$.
+
+### Time-varying reproduction number
+
+
+## Hubei
+
+```{r, warning=FALSE, echo=FALSE, message=FALSE, results = 'hide'}
+hubei <- read.csv("~/Desktop/Data/hubei.csv")
+names(hubei) = c("dates", "I")
+hubei$I[2:length(hubei$I)] = diff(hubei$I)
+hubei <- hubei[1:57,]
+hubei$dates <- seq(as.Date("2020/1/22"), by = "day", length.out = length(hubei$I))
+
+vhubei <- as.vector(hubei$I[1:16])
+names(vhubei) <- hubei$dates[1:16]
+
+hubeiGT <- generation.time("gamma", c(3.96,4.75))
+TD <- estimate.R(vhubei, hubeiGT, methods=c("EG", "ML"))
+```
+
+
+```{r}
+
+library(ggplot2)
+data.estimates = data.frame(
+  var   = c('EG', 'ML'),
+  par = c(TD$estimates$EG$R,TD$estimates$ML$R),
+  se = c(TD$estimates$EG$conf.int[1],TD$estimates$ML$conf.int[1]),
+  eq = c(TD$estimates$EG$conf.int[2], TD$estimates$ML$conf.int[2]))
+
+p2 <- ggplot(data.estimates, aes(var,par, size=10)) + theme_bw(base_size=10)
+p2 + geom_point() +geom_errorbar(aes(x = var, ymin = eq, ymax = se, size=2), width = 0.2) + xlab("Site") + ylab("RR") + theme(legend.position = "none")
+```
+
+```{r, warning=FALSE, echo=FALSE, message=FALSE, results = 'hide'}
+config <- make_config(list(mean_si = 3.96, std_mean_si = 2,
+                           min_mean_si = 3.53, max_mean_si = 4.39,
+                           std_si = 4.75, std_std_si = 3,
+                           min_std_si = 4.46, max_std_si = 5.07))
+
+hubei_parametric_si <- estimate_R(hubei, 
+                               method = "uncertain_si",
+                               config = config)
+
+plot(hubei_parametric_si)
+```
+
+```{r}
+library(ggplot2)
+t_start <- c(2, 23)
+t_end <- c(22, 57)
+
+closure_hubei_parametric_si <- estimate_R(hubei, 
+                               method = "parametric_si",
+                            config = make_config(list(
+                            t_start = t_start,
+                            t_end = t_end,
+                            mean_si = 3.96, 
+                            std_si = 4.75)))
+plot(closure_hubei_parametric_si, "R") +
+  geom_hline(aes(yintercept = 1), color = "red", lty = 2)
+```
+
+## Italy
+
+```{r, warning=FALSE, echo=FALSE, message=FALSE, results = 'hide'}
+italy <- read.csv("~/Desktop/Data/Italy.csv")
+names(italy) = c("dates", "I")
+italy$I[2:length(italy$I)] = diff(italy$I)
+italy <- italy[31:68,]
+italy$dates <- seq(as.Date("2020/1/31"), by = "day", length.out = length(italy$I))
+
+italy_parametric_si <- estimate_R(italy, 
+                                method="parametric_si",
+                                config = make_config(list(
+                                  mean_si = 3.96, 
+                                  std_si = 4.75)))
+plot(italy_parametric_si)
+```
+
+## New Zealand
+
+```{r, warning=FALSE, echo=FALSE, message=FALSE, results = 'hide'}
+nz <- read.csv("~/Desktop/Data/NewZealand.csv")
+names(nz) = c("dates", "I")
+nz <- nz[38:68,]
+nz$I[2:length(nz$I)] = diff(nz$I)
+nz$dates <- seq(as.Date("2020/2/28"), by = "day", length.out = length(nz$I))
+
+nz_parametric_si <- estimate_R(nz, 
+                                method="parametric_si",
+                                config = make_config(list(
+                                  mean_si = 1.96, 
+                                  std_si = 4.75)))
+plot(nz_parametric_si)
+
+
+
+T <- nrow(nz)
+t_start <- seq(2, T-6) # starting at 2 as conditional on the past observations
+t_end <- t_start + 6 # adding 6 to get 7-day windows as bounds included in window
+```
+
+## Iran
+
+```{r, warning=FALSE, echo=FALSE, message=FALSE, results = 'hide'}
+iran <- read.csv("~/Desktop/Data/Iran.csv")
+names(iran) = c("dates", "I")
+iran <- iran[31:68,]
+iran$I[2:length(iran$I)] = diff(iran$I)
+
+iran$dates <- seq(as.Date("2020/2/21"), by = "day", length.out = length(iran$I))
+
+iran_parametric_si <- estimate_R(iran, 
+                                method="parametric_si",
+                                config = make_config(list(
+                                  mean_si = 1.96, 
+                                  std_si = 4.75)))
+plot(iran_parametric_si)
+```
+
+## Japan
+
+```{r, warning=FALSE, echo=FALSE, message=FALSE, results = 'hide'}
+japan <- read.csv("~/Desktop/Data/Japan.csv")
+names(japan) = c("dates", "I")
+japan$I[2:length(japan$I)] = diff(japan$I)
+japan$dates <- seq(as.Date("2020/1/22"), by = "day", length.out = length(japan$I))
+
+japan_parametric_si <- estimate_R(japan, 
+                                method="parametric_si",
+                                config = make_config(list(
+                                  mean_si = 1.96, 
+                                  std_si = 4.75)))
+plot(japan_parametric_si)
+```
+
